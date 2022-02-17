@@ -85,5 +85,11 @@ account_save = db.Table('account_save', db.Model.metadata,
 db.create_all()
 db.session.commit()
 
+@app.route('/')
+def home():
+    return {
+        'Welcome To BunBank'
+    }
+
 if __name__ == '__main__':
 	app.run()
