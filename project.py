@@ -23,6 +23,8 @@ class User(db.Model):
 class Branch(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
     branch_name = db.Column(db.String(120), unique=True, nullable=False)
+    address = db.Column(db.String(200), unique=True, nullable=False)
+    city = db.Column(db.String(50), nullable=False)
     
     def __repr__(self):
         return f'Cabang <{self.branch_name}>'
@@ -90,6 +92,8 @@ def home():
     return {
         'message':'Welcome To BunBank'
     }
+    
+
 
 if __name__ == '__main__':
 	app.run()
