@@ -37,6 +37,7 @@ class Account(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'), nullable=False)
     balance = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(50), nullable=False)
     transfers = db.relationship('transfer', backref='account', lazy='dynamic')
     withdraws = db.relationship('withdraw', backref='account', lazy='dynamic')
     saves = db.relationship('save', backref='account', lazy='dynamic')
