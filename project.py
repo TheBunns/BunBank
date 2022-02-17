@@ -88,7 +88,7 @@ db.session.commit()
 @app.route('/')
 def home():
     return {
-        'Welcome To BunBank'
+        'message':'Welcome To BunBank'
     }
 
 if __name__ == '__main__':
