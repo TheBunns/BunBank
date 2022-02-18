@@ -113,7 +113,7 @@ def parsed_user_pass():
 @app.route('/')
 def home():
     return {
-        'message':'Welcome To BunBank'
+        'message':'Selamat datang di BunBank'
     }
     
 @app.route('/admin', methods=['POST'])
@@ -125,15 +125,15 @@ def create_admin():
     adm = User.query.filter_by(name=username).first()
     if not adm:
         return jsonify({
-            'Message': 'The admin does not exist'
+            'Message': 'username yang anda masukan salah'
         }), 400
     elif adm.password != password:
         return jsonify({
-            'message': 'your password is wrong'
+            'message': 'password yang anda masukan salah'
         }), 400
     elif adm.is_admin == False:
         return jsonify({
-            'Message': 'you are not allowed'
+            'Message': 'anda tidak diizinkan'
         }), 400
     elif not 'username' in data or not 'password' in data or not 'email' in data:
         return jsonify({
@@ -164,20 +164,20 @@ def create_user():
     user = User.query.filter_by(name=username).first()
     if not user:
         return jsonify({
-            'Message': 'The admin does not exist'
+            'Message': 'username yang anda masukan salah'
         }), 400
     elif user.password != password:
         return jsonify({
-            'message': 'your password is wrong'
+            'message': 'password yang anda masukan salah'
         }), 400
     elif user.is_admin == False:
         return jsonify({
-            'Message': 'you are not allowed'
+            'Message': 'anda tidak diizinkan'
         }), 400
     elif not 'username' in data or not 'password' in data or not 'email' in data:
         return jsonify({
 			'error': 'Bad Request',
-			'message': 'Please enter the data correctly'
+			'message': 'Tolong masukan data dengan benar'
 		}), 400
     
     u = User(
@@ -203,15 +203,15 @@ def update_data_user(id):
     user = User.query.filter_by(name=username).first()
     if not user:
         return jsonify({
-            'Message': 'The admin does not exist'
+            'Message': 'username yang anda masukan salah'
         }), 400
     elif user.password != password:
         return jsonify({
-            'message': 'your password is wrong'
+            'message': 'password yang anda masukan salah'
         }), 400
     elif user.is_admin == False:
         return jsonify({
-            'Message': 'you are not allowed'
+            'Message': 'anda tidak diizinkan'
         }), 400
     
     u = User.query.filter_by(id=id).first_or_404()
@@ -256,6 +256,72 @@ def change_password_user():
     
     return {
 		'Message': 'Password telah berhasil diubah'
+	}, 201
+    
+@app.route('/delete/user/<id>', methods=['DELETE'])
+def delete_user(id):
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak izinkan'
+        }), 400
+    
+    u = User.query.filter_by(id=id).first_or_404()
+    
+    db.session.delete(u)
+    db.session.commit()
+    
+    return {
+		'Message': 'User berhasil dihapus'
+	}, 201
+    
+@app.route('/branch', methods=['POST'])
+def create_branch():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    data = request.get_json()
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    elif not 'branch_name' in data or not 'address' in data or not 'city' in data:
+        return jsonify({
+			'error': 'Bad Request',
+			'message': 'Tolong masukan data dengan benar'
+		}), 400
+    
+    b = Branch(
+        branch_name = data['branch_name'],
+        address = data['address'],
+        city = data['city']
+    )
+    db.session.add(b)
+    db.session.commit()
+    
+    return {
+		'User': b.branch_name, 
+		'message': 'Berhasil ditambahkan'
 	}, 201
 
 if __name__ == '__main__':
