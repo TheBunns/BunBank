@@ -193,6 +193,41 @@ def create_user():
 		'User': u.name, 
 		'message': 'Berhasil ditambahkan'
 	}, 201
+    
+@app.route('/change-data/user/<id>', methods=['PUT'])
+def update_data_user(id):
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    data = request.get_json()
+    adm = User.query.filter_by(name=username).first()
+    if not adm:
+        return jsonify({
+            'Message': 'The admin does not exist'
+        }), 400
+    elif adm.password != password:
+        return jsonify({
+            'message': 'your password is wrong'
+        }), 400
+    elif adm.is_admin == False:
+        return jsonify({
+            'Message': 'you are not allowed'
+        }), 400
+    
+    u = User.query.filter_by(id=id).first_or_404()
+    
+    if 'username' in data:
+        u.name = data['username']
+    elif 'email' in data:
+        u.email = data['email']
+    elif 'password' in data:
+        u.password = str(base64.b64encode(data['password'].encode('ascii')))
+    
+    db.session.commit()
+    
+    return {
+		'Message': 'Data telah berhasil diubah'
+	}, 201
 
 if __name__ == '__main__':
 	app.run()
