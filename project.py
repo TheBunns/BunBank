@@ -105,10 +105,10 @@ def parsed_user_pass():
     
     for i in range(len(decodedStr)):
         if decodedStr[i] == ":":
-            password = base64.b64encode(decodedStr[(i+1):].encode('ascii'))
+            password = decodedStr[(i+1):]
             username = decodedStr[:i]
     
-    return [username, str(password)]
+    return [username, password]
 
 @app.route('/')
 def home():
@@ -144,7 +144,7 @@ def create_admin():
     adm = User(
         name = data['username'],
         email = data['email'],
-        password = str(base64.b64encode(data['password'].encode('ascii'))),
+        password = data['password'],
         is_admin = True
     )
     db.session.add(adm)
@@ -183,7 +183,7 @@ def create_user():
     u = User(
         name = data['username'],
         email = data['email'],
-        password = str(base64.b64encode(data['password'].encode('ascii'))),
+        password = data['password'],
         is_admin = False
     )
     db.session.add(u)
@@ -200,16 +200,16 @@ def update_data_user(id):
     username = parsed[0]
     password = parsed[1]
     data = request.get_json()
-    adm = User.query.filter_by(name=username).first()
-    if not adm:
+    user = User.query.filter_by(name=username).first()
+    if not user:
         return jsonify({
             'Message': 'The admin does not exist'
         }), 400
-    elif adm.password != password:
+    elif user.password != password:
         return jsonify({
             'message': 'your password is wrong'
         }), 400
-    elif adm.is_admin == False:
+    elif user.is_admin == False:
         return jsonify({
             'Message': 'you are not allowed'
         }), 400
@@ -221,12 +221,41 @@ def update_data_user(id):
     elif 'email' in data:
         u.email = data['email']
     elif 'password' in data:
-        u.password = str(base64.b64encode(data['password'].encode('ascii')))
+        u.password = data['password']
     
     db.session.commit()
     
     return {
 		'Message': 'Data telah berhasil diubah'
+	}, 201
+    
+@app.route('/change-password/user', methods=['PUT'])
+def change_password_user():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    data = request.get_json()
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'user yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah',
+            'asd' : password
+        }), 400
+    elif not 'old_password' in data:
+        return jsonify({
+            'message': 'password lama anda salah'
+        }), 400
+    
+    user.password = data['new_password']
+    
+    db.session.commit()
+    
+    return {
+		'Message': 'Password telah berhasil diubah'
 	}, 201
 
 if __name__ == '__main__':
