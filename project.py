@@ -16,7 +16,7 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(15), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
-    accounts = db.relationship('account', backref='user', lazy='dynamic')
+    accounts = db.relationship('Account', backref='user', lazy='dynamic')
     
     def __repr__(self):
         return f'Nama <{self.name}>'
@@ -26,7 +26,7 @@ class Branch(db.Model):
     branch_name = db.Column(db.String(120), unique=True, nullable=False)
     address = db.Column(db.String(200), unique=True, nullable=False)
     city = db.Column(db.String(50), nullable=False)
-    accounts = db.relationship('account', backref='branch', lazy='dynamic')
+    accounts = db.relationship('Account', backref='branch', lazy='dynamic')
     
     def __repr__(self):
         return f'Cabang <{self.branch_name}>'
@@ -38,9 +38,9 @@ class Account(db.Model):
     branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'), nullable=False)
     balance = db.Column(db.Integer, nullable=False)
     status = db.Column(db.String(50), nullable=False)
-    transfers = db.relationship('transfer', backref='account', lazy='dynamic')
-    withdraws = db.relationship('withdraw', backref='account', lazy='dynamic')
-    saves = db.relationship('save', backref='account', lazy='dynamic')
+    # transfers = db.relationship('Transfer', backref='account', lazy='dynamic')
+    withdraws = db.relationship('Withdraw', backref='account', lazy='dynamic')
+    saves = db.relationship('Save', backref='account', lazy='dynamic')
 
     def __repr__(self):
         return f'Rekening <{self.number}>'
@@ -52,6 +52,8 @@ class Transfer(db.Model):
     from_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
     to_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
     nominal = db.Column(db.Integer, nullable=False)
+    from_account = db.relationship('Account', backref="from", uselist=False, foreign_keys=[from_account_id])
+    to_account = db.relationship('Account', backref="to", uselist=False, foreign_keys=[to_account_id])
     
     def __repr__(self):
         return f'Transfer sejumlah <{self.nominal}>'
@@ -95,13 +97,102 @@ class Save(db.Model):
 db.create_all()
 db.session.commit()
 
+def parsed_user_pass():
+    encoded = request.headers.get('Authorization')
+    encodedStr = encoded[6:]
+    decodedBytes = base64.b64decode(encodedStr)
+    decodedStr = str(decodedBytes, "utf-8")
+    
+    for i in range(len(decodedStr)):
+        if decodedStr[i] == ":":
+            password = base64.b64encode(decodedStr[(i+1):].encode('ascii'))
+            username = decodedStr[:i]
+    
+    return [username, str(password)]
+
 @app.route('/')
 def home():
     return {
         'message':'Welcome To BunBank'
     }
     
-
+@app.route('/admin', methods=['POST'])
+def create_admin():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    data = request.get_json()
+    adm = User.query.filter_by(name=username).first()
+    if not adm:
+        return jsonify({
+            'Message': 'The admin does not exist'
+        }), 400
+    elif adm.password != password:
+        return jsonify({
+            'message': 'your password is wrong'
+        }), 400
+    elif adm.is_admin == False:
+        return jsonify({
+            'Message': 'you are not allowed'
+        }), 400
+    elif not 'username' in data or not 'password' in data or not 'email' in data:
+        return jsonify({
+			'error': 'Bad Request',
+			'message': 'Please enter the data correctly'
+		}), 400
+    
+    adm = User(
+        name = data['username'],
+        email = data['email'],
+        password = str(base64.b64encode(data['password'].encode('ascii'))),
+        is_admin = True
+    )
+    db.session.add(adm)
+    db.session.commit()
+    
+    return {
+		'User': adm.name, 
+		'message': 'Telah ditambahkan sebagai admin'
+	}, 201
+    
+@app.route('/user', methods=['POST'])
+def create_user():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    data = request.get_json()
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'The admin does not exist'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'your password is wrong'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'you are not allowed'
+        }), 400
+    elif not 'username' in data or not 'password' in data or not 'email' in data:
+        return jsonify({
+			'error': 'Bad Request',
+			'message': 'Please enter the data correctly'
+		}), 400
+    
+    u = User(
+        name = data['username'],
+        email = data['email'],
+        password = str(base64.b64encode(data['password'].encode('ascii'))),
+        is_admin = False
+    )
+    db.session.add(u)
+    db.session.commit()
+    
+    return {
+		'User': u.name, 
+		'message': 'Berhasil ditambahkan'
+	}, 201
 
 if __name__ == '__main__':
 	app.run()
