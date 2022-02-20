@@ -451,6 +451,125 @@ def create_account():
         'branch': b.branch_name,
 		'message': 'Account berhasil ditambahkan'
 	}, 201
+    
+@app.route('/change-data/account/<id>', methods=['PUT'])
+def update_data_account(id):
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    data = request.get_json()
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    
+    account = Account.query.filter_by(id=id).first_or_404()
+
+    if 'branch_name' in data:
+        b = Branch.query.filter_by(branch_name=data['branch_name']).first()
+        account.branch_id = b.id
+    elif 'username' in data:
+        u = User.query.filter_by(name=data['username']).first()
+        account.user_id = u.id
+    elif 'number' in data:
+        account.number = data['number']
+    
+    db.session.commit()
+    
+    return {
+		'Message': 'Data telah berhasil diubah'
+	}, 201
+    
+@app.route('/delete/account/<id>', methods=['DELETE'])
+def delete_account(id):
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak izinkan'
+        }), 400
+    
+    account = Account.query.filter_by(id=id).first_or_404()
+    
+    db.session.delete(account)
+    db.session.commit()
+    
+    return {
+		'Message': 'branch berhasil dihapus'
+	}, 201
+    
+@app.route('/close-account/user', methods=['PUT'])
+def close_account_user():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    
+    account = Account.query.filter_by(user_id=user.id).first_or_404()
+    
+    account.status = 'Close'
+    
+    db.session.commit()
+    
+    return {
+		'Message': 'Rekening telah ditutup'
+	}, 201
+
+@app.route('/close-account/user/<id>', methods=['PUT'])
+def close_account_admin(id):
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    
+    account = Account.query.filter_by(id=id).first_or_404()
+    
+    account.status = 'Close'
+    
+    db.session.commit()
+    
+    return {
+		'Message': 'Data telah berhasil diubah'
+	}, 201
 
 if __name__ == '__main__':
 	app.run()
