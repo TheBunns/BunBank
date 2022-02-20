@@ -568,7 +568,84 @@ def close_account_admin(id):
     db.session.commit()
     
     return {
-		'Message': 'Data telah berhasil diubah'
+		'Message': f'Rekening {account.number} telah berhasil ditutup'
+	}, 201
+    
+@app.route('/open-account/user/<id>', methods=['PUT'])
+def open_account_admin(id):
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    
+    account = Account.query.filter_by(id=id).first_or_404()
+    
+    account.status = 'Aktif'
+    
+    db.session.commit()
+    
+    return {
+		'Message': f'Rekening {account.number} telah Aktif kembali'
+	}, 201
+    
+@app.route('/withdraw', methods=['POST'])
+def withdraw():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    data = request.get_json()
+    user = User.query.filter_by(name=username).first()
+    account = Account.query.filter_by(user_id=user.id).first_or_404()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif not 'nominal' in data:
+        return jsonify({
+            'message': 'Masukan nominal'
+        }), 400
+    elif data['nominal'] % 50000 != 0:
+        return jsonify({
+            'message': 'Proses tarik tunai harus berjumlah kelipatan Rp 50.000'
+        }), 400 
+    elif account.status == 'Close':
+        return jsonify({
+            'message': 'Maaf rekening anda ditutup'
+        }), 400 
+    elif account.balance < 100000 and account.status == 'Aktif':
+        return jsonify({
+            'message': 'Maaf saldo anda tidak mencukupi'
+        }), 400 
+    
+    w = Withdraw (
+        user_id = user.id,
+        account_id = account.id,
+        nominal = data['nominal'],
+        date = datetime.now()
+    )
+    account.balance -= data['nominal'] 
+    
+    db.session.add(w)
+    db.session.commit()
+    
+    return {
+		'Message': f'Anda telah melakukan tarik tunai dengan nominal sebesar {w.nominal}, silahkan ambil di ATM terdekat'
 	}, 201
 
 if __name__ == '__main__':
