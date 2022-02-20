@@ -33,7 +33,7 @@ class Branch(db.Model):
     
 class Account(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
-    number = db.Column(db.Integer, unique=True)
+    number = db.Column(db.String(15), unique=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'), nullable=False)
     balance = db.Column(db.Integer, nullable=False)
@@ -320,8 +320,136 @@ def create_branch():
     db.session.commit()
     
     return {
-		'User': b.branch_name, 
+		'Branch': b.branch_name, 
 		'message': 'Berhasil ditambahkan'
+	}, 201
+    
+@app.route('/change-data/branch/<id>', methods=['PUT'])
+def update_data_branch(id):
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    data = request.get_json()
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    
+    branch = Branch.query.filter_by(id=id).first_or_404()
+    
+    if 'branch_name' in data:
+        branch.branch_name = data['branch_name']
+    elif 'address' in data:
+        branch.address = data['address']
+    elif 'city' in data:
+        branch.city = data['city']
+    
+    db.session.commit()
+    
+    return {
+		'Message': 'Data telah berhasil diubah'
+	}, 201
+
+@app.route('/delete/branch/<id>', methods=['DELETE'])
+def delete_branch(id):
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak izinkan'
+        }), 400
+    
+    branch = Branch.query.filter_by(id=id).first_or_404()
+    
+    db.session.delete(branch)
+    db.session.commit()
+    
+    return {
+		'Message': 'branch berhasil dihapus'
+	}, 201
+    
+@app.route('/account', methods=['POST'])
+def create_account():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    data = request.get_json()
+    u = User.query.filter_by(name=data['username']).first()
+    b = Branch.query.filter_by(branch_name=data['branch_name']).first()
+    number = Account.query.filter_by(number=data['number']).first()
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    elif not 'username' in data or not 'branch_name' in data or not 'number' in data or not 'balance' in data:
+        return jsonify({
+			'error': 'Bad Request',
+			'message': 'Tolong masukan data dengan benar'
+		}), 400
+    elif not u:
+        return jsonify({
+            'Message': 'Tidak ada user dengan username tersebut'
+        }), 400
+    elif not b:
+        return jsonify({
+            'Message': 'Tidak ada Branch dengan nama tersebut'
+        }), 400
+    elif len(data['number']) < 10:
+        return jsonify({
+            'Message': 'Nomor rekening harus 10 digit atau lebih'
+        }), 400
+    elif number != None:
+        return jsonify({
+            'Message': 'Nomor rekening tersebut sudah ada'
+        }), 400
+    elif data['balance'] < 50000:
+        return jsonify({
+            'Message': 'saldo awal minimal RP.50.000'
+        }), 400
+    
+    a = Account(
+        number = data['number'],
+        user_id = u.id,
+        branch_id = b.id,
+        balance = data['balance'],
+        status = "Aktif"
+    )
+    db.session.add(a)
+    db.session.commit()
+    
+    return {
+		'User': u.name, 
+        'Account': data['number'],
+        'branch': b.branch_name,
+		'message': 'Account berhasil ditambahkan'
 	}, 201
 
 if __name__ == '__main__':
