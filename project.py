@@ -38,6 +38,8 @@ class Account(db.Model):
     branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'), nullable=False)
     balance = db.Column(db.Integer, nullable=False)
     status = db.Column(db.String(50), nullable=False)
+    last_active = db.Column(db.Date, nullable=False)
+    dormant_days = db.Column(db.Integer, nullable=False)
     # transfers = db.relationship('Transfer', backref='account', lazy='dynamic')
     withdraws = db.relationship('Withdraw', backref='account', lazy='dynamic')
     saves = db.relationship('Save', backref='account', lazy='dynamic')
@@ -110,11 +112,42 @@ def parsed_user_pass():
     
     return [username, password]
 
-@app.route('/')
+@app.route('/home')
 def home():
     return {
         'message':'Selamat datang di BunBank'
     }
+
+@app.route('/')
+def refresh_dormant_days():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    adm = User.query.filter_by(name=username).first()
+    if not adm:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif adm.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif adm.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    
+    # account = Account.query.filter_by(status='Aktif').all()
+    
+    for account in Account.query.all():
+        dormant = date.today() - account.last_active
+        account.dormant_days = dormant.days
+        if account.dormant_days >= 90:
+            account.status = 'Close'
+    
+    db.session.commit()
+    
+    
     
 @app.route('/admin', methods=['POST'])
 def create_admin():
@@ -640,6 +673,8 @@ def withdraw():
         date = datetime.now()
     )
     account.balance -= data['nominal'] 
+    account.last_active = datetime.now()
+    account.dormant_days = 0
     
     db.session.add(w)
     db.session.commit()
@@ -684,6 +719,8 @@ def save(id):
         date = datetime.now()
     )
     account.balance += data['nominal'] 
+    account.last_active = datetime.now()
+    account.dormant_days = 0
     
     db.session.add(s)
     db.session.commit()
@@ -721,6 +758,10 @@ def transfer():
         return jsonify({
             'message': 'Maaf rekening anda ditutup'
         }), 400 
+    elif toAccount.status == 'Close':
+        return jsonify({
+            'message': 'Maaf rekening tujuan anda telah ditutup'
+        }), 400 
     elif fromAccount.balance - data['nominal'] < 50000:
         return jsonify({
             'message': 'Maaf saldo anda tidak mencukupi'
@@ -735,6 +776,10 @@ def transfer():
     )
     fromAccount.balance -= data['nominal'] 
     toAccount.balance += data['nominal']
+    fromAccount.last_active = datetime.now()
+    toAccount.last_active = datetime.now()
+    fromAccount.dormant_days = 0
+    toAccount.dormant_days = 0
     
     db.session.add(t)
     db.session.commit()
