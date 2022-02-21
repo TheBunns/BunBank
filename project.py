@@ -33,7 +33,7 @@ class Branch(db.Model):
     
 class Account(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
-    number = db.Column(db.String(15), unique=True)
+    number = db.Column(db.String(15), nullable=False, unique=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'), nullable=False)
     balance = db.Column(db.Integer, nullable=False)
@@ -473,7 +473,9 @@ def create_account():
         user_id = u.id,
         branch_id = b.id,
         balance = data['balance'],
-        status = "Aktif"
+        status = "Aktif",
+        last_active = date.today(),
+        dormant_days = 0
     )
     db.session.add(a)
     db.session.commit()
@@ -787,6 +789,92 @@ def transfer():
     return {
 		'Message': f'Anda telah melakukan transfer dengan nominal Rp.{t.nominal} kepada {toAccount.number} atas nama {toAccount.user.name}'
 	}, 201
+    
+@app.route('/users')
+def read_users():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    
+    return jsonify ([
+        {
+            'name': u.name,
+            'email': u.email,
+            'account': [{
+                'number': a.number,
+                'branch': a.branch.branch_name
+            } for a in u.accounts]
+        } for u in User.query.all() if u.is_admin == False
+    ])
+    
+@app.route('/accounts')
+def read_accounts():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    
+    return jsonify ([
+        {
+            'account' : a.number,
+            'branch': a.branch.branch_name,
+            'user': a.user.name,
+            'balance': a.balance,
+            'status': a.status,
+            'last_active': a.last_active
+        } for a in Account.query.all() 
+    ])
+    
+@app.route('/branches')
+def read_branches():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    
+    # return jsonify ([
+    #     {
+    #         'branch':b.branch_name,
+            
+    #     } for b in Branch.query.all() 
+    # ])
 
 if __name__ == '__main__':
 	app.run()
