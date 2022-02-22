@@ -38,10 +38,10 @@ class Account(db.Model):
     number = db.Column(db.String(15), nullable=False, unique=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'), nullable=False)
-    balance = db.Column(db.Integer, nullable=False)
+    balance = db.Column(db.Integer, nullable=False, default=0)
     status = db.Column(db.String(50), nullable=False)
     last_active = db.Column(db.Date, nullable=False)
-    dormant_days = db.Column(db.Integer, nullable=False)
+    off_days = db.Column(db.Integer, nullable=False)
     # transfers = db.relationship('Transfer', backref='account', lazy='dynamic')
     withdraws = db.relationship('Withdraw', backref='account', lazy='dynamic')
     saves = db.relationship('Save', backref='account', lazy='dynamic')
@@ -125,7 +125,7 @@ def home():
     }
 
 @app.route('/')
-def refresh_dormant_days():
+def refresh():
     parsed = parsed_user_pass()
     username = parsed[0]
     password = parsed[1]
@@ -143,13 +143,11 @@ def refresh_dormant_days():
             'Message': 'anda tidak diizinkan'
         }), 400
     
-    # account = Account.query.filter_by(status='Aktif').all()
-    
     for account in Account.query.all():
-        dormant = date.today() - account.last_active
-        account.dormant_days = dormant.days
-        if account.dormant_days >= 90:
-            account.status = 'Close'
+        off = date.today() - account.last_active
+        account.off_days = off.days
+        if account.of_days >= 90:
+            account.status = 'Dormant'
     
     db.session.commit()
     
@@ -351,7 +349,7 @@ def create_branch():
     b = Branch(
         branch_name = data['branch_name'],
         address = data['address'],
-        city = data['city']
+        city = data['city'],
     )
     db.session.add(b)
     db.session.commit()
@@ -447,7 +445,7 @@ def create_account():
         return jsonify({
             'Message': 'anda tidak diizinkan'
         }), 400
-    elif not 'username' in data or not 'branch_name' in data or not 'number' in data or not 'balance' in data:
+    elif not 'username' in data or not 'branch_name' in data or not 'number' in data:
         return jsonify({
 			'error': 'Bad Request',
 			'message': 'Tolong masukan data dengan benar'
@@ -468,19 +466,19 @@ def create_account():
         return jsonify({
             'Message': 'Nomor rekening tersebut sudah ada'
         }), 400
-    elif data['balance'] < 50000:
-        return jsonify({
-            'Message': 'saldo awal minimal RP.50.000'
-        }), 400
+    # elif data['balance'] < 50000:
+    #     return jsonify({
+    #         'Message': 'saldo awal minimal RP.50.000'
+    #     }), 400
     
     a = Account(
         number = data['number'],
         user_id = u.id,
         branch_id = b.id,
-        balance = data['balance'],
+        balance = 0,
         status = "Aktif",
         last_active = date.today(),
-        dormant_days = 0
+        off_days = 0
     )
     
     b.num_of_account += 1
@@ -562,11 +560,12 @@ def delete_account(id):
 		'Message': 'branch berhasil dihapus'
 	}, 201
     
-@app.route('/close-account/user', methods=['PUT'])
-def close_account_user():
+@app.route('/close-account/user/<id>', methods=['PUT'])
+def close_account_user(id):
     parsed = parsed_user_pass()
     username = parsed[0]
     password = parsed[1]
+    account = Account.query.filter_by(id=id).first_or_404()
     user = User.query.filter_by(name=username).first()
     if not user:
         return jsonify({
@@ -576,8 +575,10 @@ def close_account_user():
         return jsonify({
             'message': 'password yang anda masukan salah'
         }), 400
-    
-    account = Account.query.filter_by(user_id=user.id).first_or_404()
+    elif account.user_id != user.id:
+        return jsonify({
+            'Message': 'user dan rekening tidak cocok'
+        })
     
     account.status = 'Close'
     
@@ -682,11 +683,12 @@ def withdraw():
         user_id = user.id,
         account_id = account.id,
         nominal = data['nominal'],
-        date = datetime.now()
+        date = datetime.now(),
+        branch_id = account.branch_id
     )
     account.balance -= data['nominal'] 
     account.last_active = datetime.now()
-    account.dormant_days = 0
+    account.off_days = 0
     
     db.session.add(w)
     db.session.commit()
@@ -728,11 +730,12 @@ def save(id):
         user_id = user.id,
         account_id = account.id,
         nominal = data['nominal'],
-        date = datetime.now()
+        date = datetime.now(),
+        branch_id = account.branch_id
     )
     account.balance += data['nominal'] 
     account.last_active = datetime.now()
-    account.dormant_days = 0
+    account.off_days = 0
     
     db.session.add(s)
     db.session.commit()
@@ -741,14 +744,14 @@ def save(id):
 		'Message': f'Anda telah melakukan setor tunai dengan nominal Rp.{s.nominal}'
 	}, 201
     
-@app.route('/transfer', methods=['POST'])
-def transfer():
+@app.route('/transfer/<id>', methods=['POST'])
+def transfer(id):
     parsed = parsed_user_pass()
     username = parsed[0]
     password = parsed[1]
     data = request.get_json()
     user = User.query.filter_by(name=username).first()
-    fromAccount = Account.query.filter_by(user_id=user.id).first_or_404()
+    fromAccount = Account.query.filter_by(id=id).first_or_404()
     toAccount = Account.query.filter_by(number=data['to_account']).first_or_404()
     if not user:
         return jsonify({
@@ -784,14 +787,16 @@ def transfer():
         from_account_id = fromAccount.id,
         to_account_id = toAccount.id,
         nominal = data['nominal'],
-        date = datetime.now()
+        date = datetime.now(),
+        sending_branch_id = fromAccount.branch_id,
+        recipient_branch_id = toAccount.branch_id
     )
     fromAccount.balance -= data['nominal'] 
     toAccount.balance += data['nominal']
     fromAccount.last_active = datetime.now()
     toAccount.last_active = datetime.now()
-    fromAccount.dormant_days = 0
-    toAccount.dormant_days = 0
+    fromAccount.off_days = 0
+    toAccount.off_days = 0
     
     db.session.add(t)
     db.session.commit()
@@ -1028,7 +1033,6 @@ def read_history(id):
     username = parsed[0]
     password = parsed[1]
     user = User.query.filter_by(name=username).first()
-    account = Account.query.filter_by(user_id=user.id)
     if not user:
         return jsonify({
             'Message': 'username yang anda masukan salah'
@@ -1069,13 +1073,13 @@ def read_history(id):
         } for a in Account.query.filter_by(id=id)  
     ])
     
-@app.route('/balance/<number>')
-def read_balance(number):
+@app.route('/balance/<id>')
+def read_balance(id):
     parsed = parsed_user_pass()
     username = parsed[0]
     password = parsed[1]
     user = User.query.filter_by(name=username).first()
-    account = Account.query.filter_by(number=number).first()
+    account = Account.query.filter_by(id=id).first()
     if not user:
         return jsonify({
             'Message': 'username yang anda masukan salah'
@@ -1103,6 +1107,7 @@ def branches_report():
     username = parsed[0]
     password = parsed[1]
     user = User.query.filter_by(name=username).first()
+    data = request.get_json()
     if not user:
         return jsonify({
             'Message': 'username yang anda masukan salah'
@@ -1116,7 +1121,6 @@ def branches_report():
             'Message': 'anda tidak diizinkan'
         }), 400
     
-    data = request.get_json()
     date_start = date(int(data['date_start'][:4]),int(data['date_start'][5:7]),int(data['date_start'][8:10]))
     date_finish = date(int(data['date_finish'][:4]),int(data['date_finish'][5:7]),int(data['date_finish'][8:10]))
     
@@ -1136,6 +1140,7 @@ def branch_report(id):
     username = parsed[0]
     password = parsed[1]
     user = User.query.filter_by(name=username).first()
+    data = request.get_json()
     if not user:
         return jsonify({
             'Message': 'username yang anda masukan salah'
@@ -1148,12 +1153,7 @@ def branch_report(id):
         return jsonify({
             'Message': 'anda tidak diizinkan'
         }), 400
-    elif not 'date_start' in data or not 'date_finish' in data:
-        return jsonify({
-            'Message': 'Tolong masukan tanggal dengan benar'
-        }), 400
     
-    data = request.get_json()
     date_start = date(int(data['date_start'][:4]),int(data['date_start'][5:7]),int(data['date_start'][8:10]))
     date_finish = date(int(data['date_finish'][:4]),int(data['date_finish'][5:7]),int(data['date_finish'][8:10]))
     
@@ -1165,6 +1165,37 @@ def branch_report(id):
             'credit': (sum([row.nominal for row in Withdraw.query.filter_by(branch_id=b.id) if date_start <= row.date <= date_finish])
                     + sum([row.nominal for row in Transfer.query.filter_by(sending_branch_id=b.id) if date_start <= row.date <= date_finish]))
         } for b in Branch.query.filter_by(id=id) 
+    ])
+
+@app.route('/dormant-report')
+def dormant_report():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    
+    return jsonify ([
+        {
+            'account' : a.number,
+            'branch': a.branch.branch_name,
+            'user': a.user.name,
+            'balance': f"Rp.{a.balance}",
+            'status': a.status,
+            'last_active': a.last_active,
+            'dormant_period': f'{a.off_days} Days'
+        } for a in Account.query.filter_by(status="Dormant") 
     ])
 
 if __name__ == '__main__':
