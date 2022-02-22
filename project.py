@@ -54,7 +54,9 @@ class Transfer(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
     from_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    sending_branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'), nullable=False)
     to_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    recipient_branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'), nullable=False)
     nominal = db.Column(db.Integer, nullable=False)
     from_account = db.relationship('Account', backref='from_', uselist=False, foreign_keys=[from_account_id])
     to_account = db.relationship('Account', backref='to', uselist=False, foreign_keys=[to_account_id])
@@ -66,6 +68,7 @@ class Withdraw(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'), nullable=False)
     nominal = db.Column(db.Integer, nullable=False)
     date = db.Column(db.Date, nullable=False)
     
@@ -76,6 +79,7 @@ class Save(db.Model):
     id = db.Column(db.Integer, primary_key=True, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branch.id'), nullable=False)
     nominal = db.Column(db.Integer, nullable=False)
     date = db.Column(db.Date, nullable=False)
     
@@ -1092,6 +1096,60 @@ def read_balance(number):
     return jsonify ({
         'balance': f'Saldo anda Rp.{account.balance}'
     })
+    
+@app.route('/branches-report')
+def branches_report():
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    
+    return jsonify ([
+        {
+            'branch':b.branch_name,
+            'debit': (sum([row.nominal for row in Save.query.filter_by(branch_id=b.id)])+sum([row.nominal for row in Transfer.query.filter_by(recipient_branch_id=b.id)])),
+            'credit': (sum([row.nominal for row in Withdraw.query.filter_by(branch_id=b.id)])+sum([row.nominal for row in Transfer.query.filter_by(sending_branch_id=b.id)]))
+        } for b in Branch.query.all() 
+    ])
+    
+@app.route('/branch-report/<id>')
+def branch_report(id):
+    parsed = parsed_user_pass()
+    username = parsed[0]
+    password = parsed[1]
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({
+            'Message': 'username yang anda masukan salah'
+        }), 400
+    elif user.password != password:
+        return jsonify({
+            'message': 'password yang anda masukan salah'
+        }), 400
+    elif user.is_admin == False:
+        return jsonify({
+            'Message': 'anda tidak diizinkan'
+        }), 400
+    
+    return jsonify ([
+        {
+            'branch':b.branch_name,
+            'debit': (sum([row.nominal for row in Save.query.filter_by(branch_id=b.id)])+sum([row.nominal for row in Transfer.query.filter_by(recipient_branch_id=b.id)])),
+            'credit': (sum([row.nominal for row in Withdraw.query.filter_by(branch_id=b.id)])+sum([row.nominal for row in Transfer.query.filter_by(sending_branch_id=b.id)]))
+        } for b in Branch.query.filter_by(id=id)
+    ])
 
 if __name__ == '__main__':
 	app.run()
