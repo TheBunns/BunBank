@@ -1022,8 +1022,8 @@ def read_histories():
         } for a in Account.query.all() 
     ])
     
-@app.route('/history/<number>')
-def read_history(number):
+@app.route('/history/<id>')
+def read_history(id):
     parsed = parsed_user_pass()
     username = parsed[0]
     password = parsed[1]
@@ -1041,10 +1041,10 @@ def read_history(number):
         return jsonify({
             'Message': 'admin tidak mempunyai riwayat transaksi'
         }), 400
-    elif number not in account:
-        return jsonify({
-            'Message': 'anda tidak memiliki nomor rekening tersebut'
-        }), 400
+        
+    data = request.get_json()
+    date_start = date(int(data['date_start'][:4]),int(data['date_start'][5:7]),int(data['date_start'][8:10]))
+    date_finish = date(int(data['date_finish'][:4]),int(data['date_finish'][5:7]),int(data['date_finish'][8:10]))
     
     return jsonify ([
         {
@@ -1053,20 +1053,20 @@ def read_history(number):
             'saves': [{
                 'date': s.date,
                 'save': f'+{s.nominal}'
-            } for s in a.saves],
+            } for s in a.saves if date_start <= s.date <= date_finish],
             'withdraws': [{
                 'date': w.date,
                 'withdraw': f'-{w.nominal}'
-            } for w in a.withdraws],
+            } for w in a.withdraws if date_start <= w.date <= date_finish],
             'transfer in': [{
                 'date': tin.date,
                 'nominal': f'+{tin.nominal} dari {tin.from_account.number}'
-            } for tin in a.to],
+            } for tin in a.to if date_start <= tin.date <= date_finish],
             'transfer out': [{
                 'date': tout.date,
                 'nominal': f'-{tout.nominal} kepada {tout.to_account.number}'
-            } for tout in a.from_]
-        } for a in Account.query.filter_by(number=number) 
+            } for tout in a.from_ if date_start <= tout.date <= date_finish]
+        } for a in Account.query.filter_by(id=id)  
     ])
     
 @app.route('/balance/<number>')
@@ -1116,11 +1116,17 @@ def branches_report():
             'Message': 'anda tidak diizinkan'
         }), 400
     
+    data = request.get_json()
+    date_start = date(int(data['date_start'][:4]),int(data['date_start'][5:7]),int(data['date_start'][8:10]))
+    date_finish = date(int(data['date_finish'][:4]),int(data['date_finish'][5:7]),int(data['date_finish'][8:10]))
+    
     return jsonify ([
         {
             'branch':b.branch_name,
-            'debit': (sum([row.nominal for row in Save.query.filter_by(branch_id=b.id)])+sum([row.nominal for row in Transfer.query.filter_by(recipient_branch_id=b.id)])),
-            'credit': (sum([row.nominal for row in Withdraw.query.filter_by(branch_id=b.id)])+sum([row.nominal for row in Transfer.query.filter_by(sending_branch_id=b.id)]))
+            'debit': (sum([row.nominal for row in Save.query.filter_by(branch_id=b.id) if date_start <= row.date <= date_finish])
+                    + sum([row.nominal for row in Transfer.query.filter_by(recipient_branch_id=b.id) if date_start <= row.date <= date_finish])),
+            'credit': (sum([row.nominal for row in Withdraw.query.filter_by(branch_id=b.id) if date_start <= row.date <= date_finish])
+                    + sum([row.nominal for row in Transfer.query.filter_by(sending_branch_id=b.id) if date_start <= row.date <= date_finish]))
         } for b in Branch.query.all() 
     ])
     
@@ -1142,13 +1148,23 @@ def branch_report(id):
         return jsonify({
             'Message': 'anda tidak diizinkan'
         }), 400
+    elif not 'date_start' in data or not 'date_finish' in data:
+        return jsonify({
+            'Message': 'Tolong masukan tanggal dengan benar'
+        }), 400
+    
+    data = request.get_json()
+    date_start = date(int(data['date_start'][:4]),int(data['date_start'][5:7]),int(data['date_start'][8:10]))
+    date_finish = date(int(data['date_finish'][:4]),int(data['date_finish'][5:7]),int(data['date_finish'][8:10]))
     
     return jsonify ([
         {
             'branch':b.branch_name,
-            'debit': (sum([row.nominal for row in Save.query.filter_by(branch_id=b.id)])+sum([row.nominal for row in Transfer.query.filter_by(recipient_branch_id=b.id)])),
-            'credit': (sum([row.nominal for row in Withdraw.query.filter_by(branch_id=b.id)])+sum([row.nominal for row in Transfer.query.filter_by(sending_branch_id=b.id)]))
-        } for b in Branch.query.filter_by(id=id)
+            'debit': (sum([row.nominal for row in Save.query.filter_by(branch_id=b.id) if date_start <= row.date <= date_finish])
+                    + sum([row.nominal for row in Transfer.query.filter_by(recipient_branch_id=b.id) if date_start <= row.date <= date_finish])),
+            'credit': (sum([row.nominal for row in Withdraw.query.filter_by(branch_id=b.id) if date_start <= row.date <= date_finish])
+                    + sum([row.nominal for row in Transfer.query.filter_by(sending_branch_id=b.id) if date_start <= row.date <= date_finish]))
+        } for b in Branch.query.filter_by(id=id) 
     ])
 
 if __name__ == '__main__':
