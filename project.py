@@ -1,5 +1,6 @@
 from email.policy import default
 from enum import unique
+from os import access
 from flask import Flask, jsonify, request, abort
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta, date
@@ -146,10 +147,14 @@ def refresh():
     for account in Account.query.all():
         off = date.today() - account.last_active
         account.off_days = off.days
-        if account.of_days >= 90:
+        if account.off_days >= 90:
             account.status = 'Dormant'
     
     db.session.commit()
+    
+    return jsonify({
+            'Message': 'Berhasil'
+        }), 400
     
 @app.route('/admin', methods=['POST'])
 def create_admin():
@@ -516,10 +521,20 @@ def update_data_account(id):
         }), 400
     
     account = Account.query.filter_by(id=id).first_or_404()
-
+    
     if 'branch_name' in data:
         b = Branch.query.filter_by(branch_name=data['branch_name']).first()
+        a = [user_id for user_id in Account.query.filter_by(branch_id=b.id)]
+        u = User.query.filter_by(id=account.user_id).first()
+        br = Branch.query.filter_by(id=account.branch_id).first()
         account.branch_id = b.id
+        ac = [user_id for user_id in Account.query.filter_by(branch_id=br.id)]
+        br.num_of_account -= 1
+        if u.id not in ac:
+            br.num_of_user -= 1
+        b.num_of_account += 1
+        if u.id not in a:
+            b.num_of_user += 1
     elif 'username' in data:
         u = User.query.filter_by(name=data['username']).first()
         account.user_id = u.id
@@ -588,7 +603,7 @@ def close_account_user(id):
 		'Message': 'Rekening telah ditutup'
 	}, 201
 
-@app.route('/close-account/user/<id>', methods=['PUT'])
+@app.route('/close-account/<id>', methods=['PUT'])
 def close_account_admin(id):
     parsed = parsed_user_pass()
     username = parsed[0]
@@ -617,7 +632,7 @@ def close_account_admin(id):
 		'Message': f'Rekening {account.number} telah berhasil ditutup'
 	}, 201
     
-@app.route('/open-account/user/<id>', methods=['PUT'])
+@app.route('/open-account/<id>', methods=['PUT'])
 def open_account_admin(id):
     parsed = parsed_user_pass()
     username = parsed[0]
@@ -646,14 +661,14 @@ def open_account_admin(id):
 		'Message': f'Rekening {account.number} telah Aktif kembali'
 	}, 201
     
-@app.route('/withdraw', methods=['POST'])
-def withdraw():
+@app.route('/withdraw/<id>', methods=['POST'])
+def withdraw(id):
     parsed = parsed_user_pass()
     username = parsed[0]
     password = parsed[1]
     data = request.get_json()
     user = User.query.filter_by(name=username).first()
-    account = Account.query.filter_by(user_id=user.id).first_or_404()
+    account = Account.query.filter_by(id=id).first_or_404()
     if not user:
         return jsonify({
             'Message': 'username yang anda masukan salah'
@@ -666,6 +681,10 @@ def withdraw():
         return jsonify({
             'message': 'Masukan nominal'
         }), 400
+    elif account.user_id != user.id:
+        return jsonify({
+            'Message': 'user dan rekening tidak cocok'
+        })
     elif data['nominal'] % 50000 != 0:
         return jsonify({
             'message': 'Proses tarik tunai harus berjumlah kelipatan Rp.50.000'
@@ -673,6 +692,10 @@ def withdraw():
     elif account.status == 'Close':
         return jsonify({
             'message': 'Maaf rekening anda ditutup'
+        }), 400 
+    elif account.status == 'Dormant':
+        return jsonify({
+            'message': 'Maaf status rekening anda Dormant'
         }), 400 
     elif account.balance < 100000:
         return jsonify({
@@ -725,6 +748,10 @@ def save(id):
         return jsonify({
             'message': 'Maaf rekening anda ditutup'
         }), 400 
+    elif account.status == 'Dormant':
+        return jsonify({
+            'message': 'Maaf status rekening anda Dormant'
+        }), 400 
     
     s = Save (
         user_id = user.id,
@@ -761,6 +788,10 @@ def transfer(id):
         return jsonify({
             'message': 'password yang anda masukan salah'
         }), 400
+    elif fromAccount.user_id != user.id:
+        return jsonify({
+            'Message': 'user dan rekening tidak cocok'
+        })
     elif not 'to_account' in data:
         return jsonify({
             'message': 'Masukan rekening tujuan'
@@ -773,9 +804,17 @@ def transfer(id):
         return jsonify({
             'message': 'Maaf rekening anda ditutup'
         }), 400 
+    elif fromAccount.status == 'Dormant':
+        return jsonify({
+            'message': 'Maaf status rekening anda Dormant'
+        }), 400 
     elif toAccount.status == 'Close':
         return jsonify({
-            'message': 'Maaf rekening tujuan anda telah ditutup'
+            'message': 'Maaf status rekening tujuan anda telah ditutup'
+        }), 400 
+    elif toAccount.status == 'Dormant':
+        return jsonify({
+            'message': 'Maaf status rekening tujuan anda Dormant'
         }), 400 
     elif fromAccount.balance - data['nominal'] < 50000:
         return jsonify({
@@ -791,14 +830,16 @@ def transfer(id):
         sending_branch_id = fromAccount.branch_id,
         recipient_branch_id = toAccount.branch_id
     )
+    db.session.add(t)
+    
     fromAccount.balance -= data['nominal'] 
     toAccount.balance += data['nominal']
-    fromAccount.last_active = datetime.now()
-    toAccount.last_active = datetime.now()
+    fromAccount.last_active = date.today()
+    toAccount.last_active = date.today()
     fromAccount.off_days = 0
     toAccount.off_days = 0
     
-    db.session.add(t)
+    
     db.session.commit()
     
     return {
@@ -835,8 +876,8 @@ def read_users():
         } for u in User.query.all() if u.is_admin == False
     ])
     
-@app.route('/user/<name>')
-def read_user(name):
+@app.route('/user/<id>')
+def read_user(id):
     parsed = parsed_user_pass()
     username = parsed[0]
     password = parsed[1]
@@ -860,9 +901,10 @@ def read_user(name):
             'email': u.email,
             'account': [{
                 'number': a.number,
-                'branch': a.branch.branch_name
+                'branch': a.branch.branch_name,
+                'status': a.status
             } for a in u.accounts]
-        } for u in User.query.filter_by(name=name) if u.is_admin == False
+        } for u in User.query.filter_by(id=id) if u.is_admin == False
     ])
     
 @app.route('/accounts')
@@ -895,8 +937,8 @@ def read_accounts():
         } for a in Account.query.all() 
     ])
     
-@app.route('/account/<number>')
-def read_account(number):
+@app.route('/account/<id>')
+def read_account(id):
     parsed = parsed_user_pass()
     username = parsed[0]
     password = parsed[1]
@@ -922,7 +964,7 @@ def read_account(number):
             'balance': a.balance,
             'status': a.status,
             'last_active': a.last_active
-        } for a in Account.query.filter_by(number=number) 
+        } for a in Account.query.filter_by(id=id) 
     ])
     
 @app.route('/branches')
